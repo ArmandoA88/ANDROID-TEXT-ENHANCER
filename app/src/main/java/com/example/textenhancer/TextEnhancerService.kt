@@ -48,9 +48,42 @@ class TextEnhancerService : AccessibilityService() {
             PixelFormat.TRANSLUCENT
         )
 
-        params.gravity = Gravity.BOTTOM or Gravity.END
-        params.x = 50
-        params.y = 200 // Offset from bottom to avoid covering keyboard keys too much
+        params.gravity = Gravity.TOP or Gravity.START
+        params.x = 0
+        params.y = 100
+
+        var initialX = 0
+        var initialY = 0
+        var initialTouchX = 0f
+        var initialTouchY = 0f
+
+        floatingButton?.setOnTouchListener { v, event ->
+            when (event.action) {
+                android.view.MotionEvent.ACTION_DOWN -> {
+                    initialX = params.x
+                    initialY = params.y
+                    initialTouchX = event.rawX
+                    initialTouchY = event.rawY
+                    true
+                }
+                android.view.MotionEvent.ACTION_MOVE -> {
+                    params.x = initialX + (event.rawX - initialTouchX).toInt()
+                    params.y = initialY + (event.rawY - initialTouchY).toInt()
+                    windowManager?.updateViewLayout(floatingButton, params)
+                    true
+                }
+                android.view.MotionEvent.ACTION_UP -> {
+                    val xDiff = (event.rawX - initialTouchX).toInt()
+                    val yDiff = (event.rawY - initialTouchY).toInt()
+                    // Detect click
+                    if (Math.abs(xDiff) < 10 && Math.abs(yDiff) < 10) {
+                        v.performClick()
+                    }
+                    true
+                }
+                else -> false
+            }
+        }
 
         floatingButton?.setOnClickListener {
             enhanceCurrentText()
@@ -101,8 +134,30 @@ class TextEnhancerService : AccessibilityService() {
 
         textView?.text = initialEnhancedText
 
-        // Set defaults if needed, or let XML defaults trigger
-        // XML default Checked is Professional. Slider is 3.
+        // Load Preferences
+        val prefs = getSharedPreferences("TextEnhancerPrefs", Context.MODE_PRIVATE)
+        val savedTone = prefs.getString("PREF_TONE", "Professional")
+        val savedLength = prefs.getInt("PREF_LENGTH", 50)
+
+        // Set Tone Chip
+        val toneCount = toneGroup?.childCount ?: 0
+        for (i in 0 until toneCount) {
+             val chip = toneGroup?.getChildAt(i) as? Chip
+             if (chip?.text.toString() == savedTone) {
+                 chip?.isChecked = true
+                 break
+             }
+        }
+        
+        // Set Length Chip
+        val lenCount = lengthGroup?.childCount ?: 0
+        for (i in 0 until lenCount) {
+             val chip = lengthGroup?.getChildAt(i) as? Chip
+             if ((chip?.text.toString().toIntOrNull() ?: 0) == savedLength) {
+                 chip?.isChecked = true
+                 break
+             }
+        }
 
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
@@ -111,10 +166,13 @@ class TextEnhancerService : AccessibilityService() {
             WindowManager.LayoutParams.FLAG_DIM_BEHIND,
             PixelFormat.TRANSLUCENT
         )
-        params.gravity = Gravity.CENTER
-        params.horizontalMargin = 0.05f // 5% margin on each side
-        params.gravity = Gravity.CENTER
+        params.gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+        params.horizontalMargin = 0f 
+        params.verticalMargin = 0f
         params.dimAmount = 0.5f
+        
+        // Ensure the dialog allows touch outside to dismiss?
+        // Actually, we want it to behave like a bottom sheet.
 
         applyBtn?.setOnClickListener {
             val validText = textView?.text.toString()
@@ -158,8 +216,12 @@ class TextEnhancerService : AccessibilityService() {
     private fun enhanceCurrentText() {
         // Capture the node at the moment of interaction to prevent focus loss issues
         targetInputNode = lastFocusedNode
-        // Initial call uses defaults
-        performEnhancement("Professional", 50, updatePreview = false)
+        
+        val prefs = getSharedPreferences("TextEnhancerPrefs", Context.MODE_PRIVATE)
+        val savedTone = prefs.getString("PREF_TONE", "Professional") ?: "Professional"
+        val savedLength = prefs.getInt("PREF_LENGTH", 50)
+        
+        performEnhancement(savedTone, savedLength, updatePreview = false)
     }
 
     private fun performEnhancement(tone: String, length: Int, updatePreview: Boolean) {
@@ -173,6 +235,9 @@ class TextEnhancerService : AccessibilityService() {
 
         val prefs = getSharedPreferences("TextEnhancerPrefs", Context.MODE_PRIVATE)
         val apiKey = prefs.getString("API_KEY", "")
+        
+        // Save preferences
+        prefs.edit().putString("PREF_TONE", tone).putInt("PREF_LENGTH", length).apply()
         
         if (apiKey.isNullOrEmpty()) {
             Toast.makeText(this, "Please set API Key in App", Toast.LENGTH_LONG).show()
