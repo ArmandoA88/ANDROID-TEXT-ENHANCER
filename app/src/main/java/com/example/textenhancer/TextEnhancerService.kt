@@ -17,13 +17,18 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.google.android.material.chip.Chip
+import com.google.android.material.chip.ChipGroup
+import com.google.android.material.slider.Slider
 
 class TextEnhancerService : AccessibilityService() {
 
     private var windowManager: WindowManager? = null
     private var floatingButton: View? = null
     private var previewDialog: View? = null
+
     private var lastFocusedNode: AccessibilityNodeInfo? = null
+    private var targetInputNode: AccessibilityNodeInfo? = null // Captured when button is clicked
     private val serviceScope = CoroutineScope(Dispatchers.Main)
 
     override fun onServiceConnected() {
@@ -70,18 +75,96 @@ class TextEnhancerService : AccessibilityService() {
                 lastFocusedNode = source
                 floatingButton?.visibility = View.VISIBLE
             } else {
-                // If focus moves to something not editable, hide it? 
-                // We might want to keep it if the keyboard is still up, but that's hard to know for sure.
-                // For now, let's be strict: only show if editable is focused.
-                // floatingButton?.visibility = View.GONE 
+                // Focus moved to non-editable view, hide button
+                floatingButton?.visibility = View.GONE
             }
+        } else if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            // New window/activity, hide unless we find an editable field immediately (unlikely)
+             floatingButton?.visibility = View.GONE
         }
     }
 
+    private fun showPreviewDialog(initialEnhancedText: String) {
+        if (previewDialog != null) {
+            try { windowManager?.removeView(previewDialog) } catch (e: Exception) {}
+        }
+
+        // Use a ContextThemeWrapper to ensure Material attributes are available
+        val themedContext = android.view.ContextThemeWrapper(this, R.style.Theme_TextEnhancer)
+        previewDialog = LayoutInflater.from(themedContext).inflate(R.layout.layout_preview_dialog, null)
+        val textView = previewDialog?.findViewById<TextView>(R.id.previewText)
+        val applyBtn = previewDialog?.findViewById<Button>(R.id.applyButton)
+        val cancelBtn = previewDialog?.findViewById<Button>(R.id.cancelButton)
+        val regenerateBtn = previewDialog?.findViewById<Button>(R.id.regenerateButton)
+        val toneGroup = previewDialog?.findViewById<ChipGroup>(R.id.toneChipGroup)
+        val lengthGroup = previewDialog?.findViewById<ChipGroup>(R.id.lengthChipGroup)
+
+        textView?.text = initialEnhancedText
+
+        // Set defaults if needed, or let XML defaults trigger
+        // XML default Checked is Professional. Slider is 3.
+
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_DIM_BEHIND,
+            PixelFormat.TRANSLUCENT
+        )
+        params.gravity = Gravity.CENTER
+        params.horizontalMargin = 0.05f // 5% margin on each side
+        params.gravity = Gravity.CENTER
+        params.dimAmount = 0.5f
+
+        applyBtn?.setOnClickListener {
+            val validText = textView?.text.toString()
+            removePreviewDialog()
+            
+            // Wait for focus to return to the app, then apply
+            serviceScope.launch {
+                kotlinx.coroutines.delay(300)
+                applyText(validText)
+            }
+        }
+
+        cancelBtn?.setOnClickListener {
+            removePreviewDialog()
+        }
+        
+        regenerateBtn?.setOnClickListener {
+            val selectedChipId = toneGroup?.checkedChipId
+            val selectedTone = if (selectedChipId != null && selectedChipId != View.NO_ID) {
+                val chip = previewDialog?.findViewById<Chip>(selectedChipId)
+                chip?.text.toString()
+            } else {
+                "Professional"
+            }
+            
+            val selectedLengthId = lengthGroup?.checkedChipId
+            val selectedLength = if (selectedLengthId != null && selectedLengthId != View.NO_ID) {
+                 val chip = previewDialog?.findViewById<Chip>(selectedLengthId)
+                 chip?.text.toString().toIntOrNull() ?: 50
+            } else {
+                50
+            }
+            
+            // Re-run enhancement
+            performEnhancement(selectedTone, selectedLength, updatePreview = true)
+        }
+
+        windowManager?.addView(previewDialog, params)
+    }
+
     private fun enhanceCurrentText() {
-        // Refresh the node to get latest text
-        lastFocusedNode?.refresh()
-        val text = lastFocusedNode?.text?.toString()
+        // Capture the node at the moment of interaction to prevent focus loss issues
+        targetInputNode = lastFocusedNode
+        // Initial call uses defaults
+        performEnhancement("Professional", 50, updatePreview = false)
+    }
+
+    private fun performEnhancement(tone: String, length: Int, updatePreview: Boolean) {
+        targetInputNode?.refresh()
+        val text = targetInputNode?.text?.toString()
 
         if (text.isNullOrEmpty()) {
             Toast.makeText(this, "No text to enhance", Toast.LENGTH_SHORT).show()
@@ -90,59 +173,40 @@ class TextEnhancerService : AccessibilityService() {
 
         val prefs = getSharedPreferences("TextEnhancerPrefs", Context.MODE_PRIVATE)
         val apiKey = prefs.getString("API_KEY", "")
-        val isPreviewMode = prefs.getBoolean("PREVIEW_MODE", true)
-
+        
         if (apiKey.isNullOrEmpty()) {
             Toast.makeText(this, "Please set API Key in App", Toast.LENGTH_LONG).show()
             return
         }
 
-        Toast.makeText(this, "Enhancing...", Toast.LENGTH_SHORT).show()
+        if (!updatePreview) {
+             Toast.makeText(this, "Enhancing...", Toast.LENGTH_SHORT).show()
+        } else {
+             val textView = previewDialog?.findViewById<TextView>(R.id.previewText)
+             textView?.text = "Regenerating..."
+        }
 
         serviceScope.launch {
-            val processor = TextProcessor(apiKey)
-            val enhancedText = processor.enhance(text)
+            try {
+                val processor = TextProcessor(apiKey)
+                val result = processor.enhance(text, tone, length)
 
-            if (isPreviewMode) {
-                showPreviewDialog(enhancedText)
-            } else {
-                applyText(enhancedText)
+                if (updatePreview && previewDialog != null) {
+                    val textView = previewDialog?.findViewById<TextView>(R.id.previewText)
+                    textView?.text = result
+                } else {
+                    // Initial show
+                    showPreviewDialog(result)
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                Toast.makeText(this@TextEnhancerService, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                if (updatePreview && previewDialog != null) {
+                     val textView = previewDialog?.findViewById<TextView>(R.id.previewText)
+                     textView?.text = "Failed: ${e.message}"
+                }
             }
         }
-    }
-
-    private fun showPreviewDialog(newText: String) {
-        if (previewDialog != null) {
-            try { windowManager?.removeView(previewDialog) } catch (e: Exception) {}
-        }
-
-        previewDialog = LayoutInflater.from(this).inflate(R.layout.layout_preview_dialog, null)
-        val textView = previewDialog?.findViewById<TextView>(R.id.previewText)
-        val applyBtn = previewDialog?.findViewById<Button>(R.id.applyButton)
-        val cancelBtn = previewDialog?.findViewById<Button>(R.id.cancelButton)
-
-        textView?.text = newText
-
-        val params = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_DIM_BEHIND,
-            PixelFormat.TRANSLUCENT
-        )
-        params.gravity = Gravity.CENTER
-        params.dimAmount = 0.5f
-
-        applyBtn?.setOnClickListener {
-            applyText(newText)
-            removePreviewDialog()
-        }
-
-        cancelBtn?.setOnClickListener {
-            removePreviewDialog()
-        }
-
-        windowManager?.addView(previewDialog, params)
     }
 
     private fun removePreviewDialog() {
@@ -155,7 +219,42 @@ class TextEnhancerService : AccessibilityService() {
     private fun applyText(text: String) {
         val arguments = Bundle()
         arguments.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
-        lastFocusedNode?.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)
+        
+        // Attempt 1: Use captured node
+        targetInputNode?.refresh()
+        var success = targetInputNode?.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments) ?: false
+
+        // Attempt 2: If failed, try to find fresh focus (dialog is gone now)
+        var currentNode = targetInputNode
+        if (!success) {
+             val root = rootInActiveWindow
+             val freshFocus = root?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+             if (freshFocus != null) {
+                 currentNode = freshFocus
+                 success = currentNode.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)
+             }
+        }
+
+        if (!success) {
+            // Fallback: Copy to clipboard and Paste
+            try {
+                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                val clip = android.content.ClipData.newPlainText("Enhanced Text", text)
+                clipboard.setPrimaryClip(clip)
+                
+                // Try paste action on best available node
+                val pasteSuccess = currentNode?.performAction(AccessibilityNodeInfo.ACTION_PASTE) ?: false
+                
+                if (pasteSuccess) {
+                    Toast.makeText(this, "Pasted from clipboard", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(this, "Failed to apply. Text copied to clipboard.", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                 Toast.makeText(this, "Failed to apply text", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     override fun onInterrupt() {

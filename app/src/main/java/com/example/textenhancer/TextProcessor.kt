@@ -45,18 +45,24 @@ class TextProcessor(private val apiKey: String) {
         api = retrofit.create(OpenAiApi::class.java)
     }
 
-    suspend fun enhance(text: String): String {
+    suspend fun enhance(text: String, tone: String, length: Int): String {
         return withContext(Dispatchers.IO) {
             try {
+                // length is now the target word count (e.g. 10, 20, 50, etc)
+                val systemPrompt = "You are a helpful assistant that rewrites text. " +
+                        "Tone: $tone. " +
+                        "Target Length: Approximately $length words. " +
+                        "Return ONLY the rewritten text, nothing else."
+
                 val messages = listOf(
-                    Message("system", "You are a helpful assistant that rewrites text to be clearer and more concise. Return ONLY the rewritten text, nothing else."),
+                    Message("system", systemPrompt),
                     Message("user", text)
                 )
                 val response = api.getCompletion(OpenAiRequest("gpt-3.5-turbo", messages))
                 response.choices.firstOrNull()?.message?.content?.trim() ?: text
             } catch (e: Exception) {
                 Log.e("TextProcessor", "Error enhancing text", e)
-                text // Return original on error
+                throw e // Propagate to Service for Toast
             }
         }
     }
