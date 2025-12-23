@@ -102,18 +102,27 @@ class TextEnhancerService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
 
-        if (event.eventType == AccessibilityEvent.TYPE_VIEW_FOCUSED) {
-            val source = event.source
-            if (source != null && source.isEditable) {
-                lastFocusedNode = source
-                floatingButton?.visibility = View.VISIBLE
-            } else {
-                // Focus moved to non-editable view, hide button
-                floatingButton?.visibility = View.GONE
+        val eventType = event.eventType
+        val source = event.source
+
+        when (eventType) {
+            AccessibilityEvent.TYPE_VIEW_FOCUSED,
+            AccessibilityEvent.TYPE_VIEW_CLICKED,
+            AccessibilityEvent.TYPE_VIEW_TEXT_SELECTION_CHANGED -> {
+                if (source != null && source.isEditable) {
+                    lastFocusedNode = source
+                    // Cancel any pending hide
+                    serviceScope.launch {
+                        floatingButton?.visibility = View.VISIBLE
+                    }
+                } else {
+                    // Don't hide immediately, might be transient focus change
+                }
             }
-        } else if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-            // New window/activity, hide unless we find an editable field immediately (unlikely)
-             floatingButton?.visibility = View.GONE
+            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
+                 // Check if the new window has an input field focused?
+                 // For now, let's just NOT hide immediately on window change, as keyboards are windows too.
+            }
         }
     }
 
@@ -125,19 +134,21 @@ class TextEnhancerService : AccessibilityService() {
         // Use a ContextThemeWrapper to ensure Material attributes are available
         val themedContext = android.view.ContextThemeWrapper(this, R.style.Theme_TextEnhancer)
         previewDialog = LayoutInflater.from(themedContext).inflate(R.layout.layout_preview_dialog, null)
-        val textView = previewDialog?.findViewById<TextView>(R.id.previewText)
+        val textView = previewDialog?.findViewById<android.widget.EditText>(R.id.previewText)
         val applyBtn = previewDialog?.findViewById<Button>(R.id.applyButton)
         val cancelBtn = previewDialog?.findViewById<Button>(R.id.cancelButton)
         val regenerateBtn = previewDialog?.findViewById<Button>(R.id.regenerateButton)
         val toneGroup = previewDialog?.findViewById<ChipGroup>(R.id.toneChipGroup)
         val lengthGroup = previewDialog?.findViewById<ChipGroup>(R.id.lengthChipGroup)
+        val languageSpinner = previewDialog?.findViewById<android.widget.Spinner>(R.id.languageSpinner)
 
-        textView?.text = initialEnhancedText
+        textView?.setText(initialEnhancedText)
 
         // Load Preferences
         val prefs = getSharedPreferences("TextEnhancerPrefs", Context.MODE_PRIVATE)
         val savedTone = prefs.getString("PREF_TONE", "Professional")
         val savedLength = prefs.getInt("PREF_LENGTH", 50)
+        val savedLanguage = prefs.getString("PREF_LANGUAGE", "Auto")
 
         // Set Tone Chip
         val toneCount = toneGroup?.childCount ?: 0
@@ -157,6 +168,17 @@ class TextEnhancerService : AccessibilityService() {
                  chip?.isChecked = true
                  break
              }
+        }
+
+        // Set Language Spinner
+        val languages = listOf("Auto (Same as Input)", "English", "Spanish", "French", "German")
+        val adapter = android.widget.ArrayAdapter(themedContext, R.layout.spinner_item, languages)
+        adapter.setDropDownViewResource(R.layout.spinner_dropdown_item)
+        languageSpinner?.adapter = adapter
+        
+        val langIndex = languages.indexOfFirst { it == savedLanguage }
+        if (langIndex >= 0) {
+            languageSpinner?.setSelection(langIndex)
         }
 
         val params = WindowManager.LayoutParams(
@@ -205,9 +227,11 @@ class TextEnhancerService : AccessibilityService() {
             } else {
                 50
             }
+
+            val selectedLanguage = languageSpinner?.selectedItem?.toString() ?: "Auto"
             
             // Re-run enhancement
-            performEnhancement(selectedTone, selectedLength, updatePreview = true)
+            performEnhancement(selectedTone, selectedLength, selectedLanguage, updatePreview = true)
         }
 
         windowManager?.addView(previewDialog, params)
@@ -220,11 +244,12 @@ class TextEnhancerService : AccessibilityService() {
         val prefs = getSharedPreferences("TextEnhancerPrefs", Context.MODE_PRIVATE)
         val savedTone = prefs.getString("PREF_TONE", "Professional") ?: "Professional"
         val savedLength = prefs.getInt("PREF_LENGTH", 50)
+        val savedLanguage = prefs.getString("PREF_LANGUAGE", "Auto") ?: "Auto"
         
-        performEnhancement(savedTone, savedLength, updatePreview = false)
+        performEnhancement(savedTone, savedLength, savedLanguage, updatePreview = false)
     }
 
-    private fun performEnhancement(tone: String, length: Int, updatePreview: Boolean) {
+    private fun performEnhancement(tone: String, length: Int, language: String, updatePreview: Boolean) {
         targetInputNode?.refresh()
         val text = targetInputNode?.text?.toString()
 
@@ -237,7 +262,11 @@ class TextEnhancerService : AccessibilityService() {
         val apiKey = prefs.getString("API_KEY", "")
         
         // Save preferences
-        prefs.edit().putString("PREF_TONE", tone).putInt("PREF_LENGTH", length).apply()
+        prefs.edit()
+            .putString("PREF_TONE", tone)
+            .putInt("PREF_LENGTH", length)
+            .putString("PREF_LANGUAGE", language)
+            .apply()
         
         if (apiKey.isNullOrEmpty()) {
             Toast.makeText(this, "Please set API Key in App", Toast.LENGTH_LONG).show()
@@ -247,18 +276,18 @@ class TextEnhancerService : AccessibilityService() {
         if (!updatePreview) {
              Toast.makeText(this, "Enhancing...", Toast.LENGTH_SHORT).show()
         } else {
-             val textView = previewDialog?.findViewById<TextView>(R.id.previewText)
-             textView?.text = "Regenerating..."
+             val textView = previewDialog?.findViewById<android.widget.EditText>(R.id.previewText)
+             textView?.setText("Regenerating...")
         }
 
         serviceScope.launch {
             try {
                 val processor = TextProcessor(apiKey)
-                val result = processor.enhance(text, tone, length)
+                val result = processor.enhance(text, tone, length, language)
 
                 if (updatePreview && previewDialog != null) {
-                    val textView = previewDialog?.findViewById<TextView>(R.id.previewText)
-                    textView?.text = result
+                    val textView = previewDialog?.findViewById<android.widget.EditText>(R.id.previewText)
+                    textView?.setText(result)
                 } else {
                     // Initial show
                     showPreviewDialog(result)
@@ -267,8 +296,8 @@ class TextEnhancerService : AccessibilityService() {
                 e.printStackTrace()
                 Toast.makeText(this@TextEnhancerService, "Error: ${e.message}", Toast.LENGTH_LONG).show()
                 if (updatePreview && previewDialog != null) {
-                     val textView = previewDialog?.findViewById<TextView>(R.id.previewText)
-                     textView?.text = "Failed: ${e.message}"
+                     val textView = previewDialog?.findViewById<android.widget.EditText>(R.id.previewText)
+                     textView?.setText("Failed: ${e.message}")
                 }
             }
         }
@@ -280,7 +309,7 @@ class TextEnhancerService : AccessibilityService() {
             previewDialog = null
         }
     }
-
+    
     private fun applyText(text: String) {
         val arguments = Bundle()
         arguments.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)

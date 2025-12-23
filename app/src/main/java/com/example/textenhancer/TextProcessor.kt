@@ -45,13 +45,21 @@ class TextProcessor(private val apiKey: String) {
         api = retrofit.create(OpenAiApi::class.java)
     }
 
-    suspend fun enhance(text: String, tone: String, length: Int): String {
+    suspend fun enhance(text: String, tone: String, length: Int, language: String = "Auto"): String {
         return withContext(Dispatchers.IO) {
             try {
                 // length is now the target word count (e.g. 10, 20, 50, etc)
+                var languageInstruction = ""
+                if (language != "Auto" && language != "Auto (Same as Input)") {
+                    languageInstruction = "Translate the text to $language. "
+                } else {
+                    languageInstruction = "Keep the same language as the input. "
+                }
+
                 val systemPrompt = "You are a helpful assistant that rewrites text. " +
                         "Tone: $tone. " +
                         "Target Length: Approximately $length words. " +
+                        languageInstruction +
                         "Return ONLY the rewritten text, nothing else."
 
                 val messages = listOf(
