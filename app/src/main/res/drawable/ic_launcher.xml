@@ -1,0 +1,41 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    
+    <!-- Background Gradient Circle -->
+    <path android:pathData="M54,54m-54,0a54,54 0 1,1 108,0a54,54 0 1,1 -108,0">
+        <aapt:attr name="android:fillColor">
+            <gradient 
+                android:startX="0" 
+                android:startY="0" 
+                android:endX="108" 
+                android:endY="108" 
+                android:type="linear">
+                <item android:offset="0" android:color="#FF6200EE"/>
+                <item android:offset="1" android:color="#FF3700B3"/>
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Text Bubble -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M34,34h40a10,10 0 0,1 10,10v20a10,10 0 0,1 -10,10h-40a10,10 0 0,1 -10,-10v-20a10,10 0 0,1 10,-10z"/>
+        
+    <!-- Text Lines -->
+    <path
+        android:fillColor="#FF6200EE"
+        android:pathData="M40,44h28v4h-28z M40,54h20v4h-20z"/>
+
+    <!-- Sparkle (Enhancement) -->
+    <path
+        android:fillColor="#FFD700"
+        android:pathData="M84,24L86.4,29.2L92,31.6L86.4,34L84,39.2L81.6,34L76,31.6L81.6,29.2L84,24Z"/>
+    <path
+        android:fillColor="#FFD700"
+        android:pathData="M24,74L25.2,76.8L28,78L25.2,79.2L24,82L22.8,79.2L20,78L22.8,76.8L24,74Z"/>
+
+</vector>

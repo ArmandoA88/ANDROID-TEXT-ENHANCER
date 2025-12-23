@@ -1,45 +1,110 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.constraintlayout.widget.ConstraintLayout 
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:padding="16dp"
-    android:gravity="center">
+    android:background="@color/luxury_black"
+    android:padding="24dp">
+
+    <!-- Header -->
+    <TextView
+        android:id="@+id/appTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="TEXT ENHANCER"
+        android:textColor="@color/luxury_gold"
+        android:textSize="32sp"
+        android:fontFamily="serif"
+        android:textStyle="bold"
+        android:letterSpacing="0.15"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        android:layout_marginTop="32dp"/>
 
     <TextView
+        android:id="@+id/appSubtitle"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Text Enhancer Settings"
-        android:textSize="24sp"
-        android:textStyle="bold"
-        android:layout_marginBottom="32dp"/>
-
-    <EditText
-        android:id="@+id/apiKeyInput"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:hint="@string/api_key_hint"
-        android:inputType="textPassword"/>
-
-    <Button
-        android:id="@+id/saveButton"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="@string/save_settings"
+        android:text="PREMIUM EDITION"
+        android:textColor="@color/luxury_gray"
+        android:textSize="12sp"
+        android:letterSpacing="0.3"
+        app:layout_constraintTop_toBottomOf="@id/appTitle"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
         android:layout_marginTop="8dp"/>
 
-    <Switch
-        android:id="@+id/modeSwitch"
-        android:layout_width="wrap_content"
+    <!-- Settings Card -->
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/settingsCard"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="@string/preview_mode"
-        android:layout_marginTop="24dp"/>
+        android:layout_marginTop="48dp"
+        app:cardBackgroundColor="@color/luxury_surface"
+        app:cardCornerRadius="12dp"
+        app:cardElevation="8dp"
+        app:strokeColor="@color/luxury_gold"
+        app:strokeWidth="1dp"
+        app:layout_constraintTop_toBottomOf="@id/appSubtitle">
 
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="24dp">
+
+            <com.google.android.material.textfield.TextInputLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                style="@style/LuxuryInput"
+                app:boxBackgroundMode="outline"
+                app:boxStrokeColor="@color/box_stroke_selector"
+                app:boxStrokeWidth="2dp"
+                app:boxStrokeWidthFocused="3dp"
+                android:textColorHint="@color/luxury_gray">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/apiKeyInput"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="@string/api_key_hint"
+                    android:inputType="textPassword"
+                    android:textColor="@color/luxury_white"
+                    android:background="@android:color/transparent"/>
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <Button
+                android:id="@+id/saveButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/save_settings"
+                style="@style/LuxuryButton"
+                android:layout_marginTop="16dp"/>
+
+            <com.google.android.material.switchmaterial.SwitchMaterial
+                android:id="@+id/modeSwitch"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/preview_mode"
+                android:textColor="@color/luxury_white"
+                app:thumbTint="@color/luxury_gold"
+                app:trackTint="@color/luxury_gray"
+                android:layout_marginTop="16dp"/>
+
+        </LinearLayout>
+    </com.google.android.material.card.MaterialCardView>
+
+    <!-- Action Buttons -->
     <Button
         android:id="@+id/enableServiceButton"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="@string/enable_service"
+        style="@style/LuxuryButton"
+        app:layout_constraintTop_toBottomOf="@id/settingsCard"
         android:layout_marginTop="32dp"/>
 
     <Button
@@ -47,6 +112,8 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="@string/grant_overlay"
-        android:layout_marginTop="8dp"/>
+        style="@style/LuxuryButton"
+        app:layout_constraintTop_toBottomOf="@id/enableServiceButton"
+        android:layout_marginTop="16dp"/>
 
-</LinearLayout>
+</androidx.constraintlayout.widget.ConstraintLayout>
